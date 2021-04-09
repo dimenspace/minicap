@@ -22,6 +22,8 @@
 #include "SimpleServer.hpp"
 #include "Projection.hpp"
 
+#include <sys/un.h>
+
 #define BANNER_VERSION 1
 #define BANNER_SIZE 24
 
@@ -122,6 +124,30 @@ pumps(int fd, unsigned char* data, size_t length) {
   while (length > 0);
 
   return 0;
+}
+
+// connect client localSocket
+static int getLocalSocket(const char *name) {
+    int localSocket, len;
+    struct sockaddr_un remote;
+
+    if ((localSocket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        MCERROR("Cannot open local socket");
+        return -1;
+    }
+
+    remote.sun_path[0] = '\0';
+    strcpy(remote.sun_path + 1, name);
+    remote.sun_family = AF_UNIX;
+    int nameLen = strlen(name);
+    len = 1 + nameLen + offsetof(
+    struct sockaddr_un, sun_path);
+
+    if (connect(localSocket, (struct sockaddr *) &remote, len) == -1) {
+        MCERROR("Cannot connect local socket %s", name);
+        return -1;
+    }
+    return localSocket;
 }
 
 static int
@@ -442,10 +468,10 @@ main(int argc, char* argv[]) {
     return EXIT_SUCCESS;
   }
 
-  if (!server.start(sockname)) {
-    MCERROR("Unable to start server on namespace '%s'", sockname);
-    goto disaster;
-  }
+  //if (!server.start(sockname)) {
+  //  MCERROR("Unable to start server on namespace '%s'", sockname);
+  //  goto disaster;
+  //}
 
   // Prepare banner for clients.
   unsigned char banner[BANNER_SIZE];
@@ -459,8 +485,12 @@ main(int argc, char* argv[]) {
   banner[22] = (unsigned char) desiredInfo.orientation;
   banner[23] = quirks;
 
-  int fd;
-  while (!gWaiter.isStopped() && (fd = server.accept()) > 0) {
+  int fd ;
+  fd = getLocalSocket(sockname);
+  if(fd > 0){
+      MCINFO("STATUS::OK");
+  }
+  while (!gWaiter.isStopped() && fd > 0) {
     MCINFO("New client connection");
 
     if (pumps(fd, banner, BANNER_SIZE) < 0) {
